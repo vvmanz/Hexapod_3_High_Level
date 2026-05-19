@@ -1,0 +1,51 @@
+{
+  "episode_index": 491,
+  "steps": 2500,
+  "return": 2431.5368885403796,
+  "success": false,
+  "reason": "timeout",
+  "rmse_goal_distance": 7.9649639412134325,
+  "rmse_path_deviation": 1.9361911142253263,
+  "mean_heading_error": 0.24338917098184362,
+  "mean_abs_roll": 0.11121967622060329,
+  "mean_abs_pitch": 0.06928929542227706,
+  "path_length": 53.79541698459252,
+  "waypoints_total": 9,
+  "waypoints_reached": 3,
+  "completion_ratio": 0.3333333333333333,
+  "goal_x": 5.196230888366699,
+  "goal_y": -0.8327562808990479,
+  "final_x": -7.227912902832031,
+  "final_y": -1.8105813264846802,
+  "final_z": 0.07376924902200699,
+  "path_type": "lissajous",
+  "waypoint_events": [
+    {
+      "step": 327,
+      "waypoint_index": 0,
+      "x": 5.196230888366699,
+      "y": -0.8327562808990479,
+      "robot_x": 5.161698818206787,
+      "robot_y": -0.8094046711921692,
+      "distance": 0.041686467826366425
+    },
+    {
+      "step": 937,
+      "waypoint_index": 1,
+      "x": -7.3084235191345215,
+      "y": -1.775978684425354,
+      "robot_x": -7.260871887207031,
+      "robot_y": -1.7722898721694946,
+      "distance": 0.04769449681043625
+    },
+    {
+      "step": 1662,
+      "waypoint_index": 2,
+      "x": 6.7525224685668945,
+      "y": 4.888371467590332,
+      "robot_x": 6.704925537109375,
+      "robot_y": 4.875236511230469,
+      "distance": 0.04937605559825897
+    }
+  ]
+}
