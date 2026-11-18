@@ -1,117 +1,124 @@
-# Hexapod · High-Level Motion Control
+# Hexapod_3_High_Level
 
-**ROS 2 controllers for six-legged robot gaits, keyboard teleoperation, waypoint navigation and motion-log analysis.**
+**High-level control of a six-legged RHex-style robot in ROS 2 and Gazebo: five gaits, CPG and phase-oscillator controllers, autonomous waypoint navigation, and tools to analyse reinforcement-learning episodes.**
 
 English | [Русский](README.ru.md)
 
-This repository explores the **high-level locomotion layer** of a hexapod robot. Python ROS 2 nodes translate movement commands into six joint-position targets, compare different stepping patterns and record motion data. An autonomous node creates waypoint paths and selects discrete movement commands from odometry. Separate analysis scripts and archived episode data are provided for evaluating trajectories and learning experiments.
+![a logged episode: the real path against the waypoints of a clover-shaped reference](rl/analyze/output_plots/episode_000002.png)
 
-![Recorded trajectory example](rl/analyze/output_plot/episode_000003.png)
+*A logged episode: the real path (blue) follows the waypoints of a clover-shaped reference (orange); 28 of 28 waypoints
+reached in 2 326 steps.*
 
-*Example archived trajectory: executed path (blue) and waypoints (orange). This image is an experiment artifact, not a claim of benchmark accuracy.*
+The robot walks on six rotating legs, one motor per leg, so a gait is a rule for when each motor turns and how fast. This
+repository is the top level of the Hexapod stack: Python ROS 2 nodes that turn a keyboard command, a phase oscillator or a
+waypoint list into target angles for the six motors, log what the robot did, and a set of scripts that evaluate episodes
+of a learned policy. The lower levels are the [middle-level coordinator](https://github.com/<your-account>/Hexapod_2_Middle_Level)
+and the [motor boards](https://github.com/<your-account>/Hexapod_1_Low_Level); here the robot is the Gazebo model
+`hexapod_0`.
 
 ## Features
 
-- **Gait experiments:** tripod, wave, diagonal, quadruped-style and four/two stepping strategies.
-- **Keyboard controllers** in `hexapod_movement/0_keyboard_*.py` for direct testing.
-- **ROS 2 interfaces** for joint-state feedback, actuator targets, odometry and external commands.
-- **Autonomous discrete navigation** along square, circle, polygon or figure-eight waypoint patterns.
-- **CSV motion logging** via `hexapod_logger.py` for experiment analysis.
-- **Episode visualization** using Matplotlib, pandas and Plotly; stored CSV/JSON recordings and HTML examples.
+* **Five gaits**: tripod (legs `0, 3, 4` against `1, 2, 5`), diagonals, four-two, waves and quadro, each as a keyboard
+  controller: `W/A/S/D` to walk and turn, `Space` or `X` to stop. A step is a small state machine that waits until the
+  active leg group has turned far enough before it releases the next one.
+* **CPG controller** (`cpg.py`): six coupled phase oscillators with the two tripods locked in anti-phase, a heading
+  regulator that steers the robot along a circle, 50 Hz loop.
+* **Phase-oscillator controller** (`phase_oscillator.py`): the same idea with selectable reference paths (circle,
+  ellipse, figure-eight, Lissajous, zigzag, square, rectangle) and a PD heading regulator.
+* **Differential-drive controller** (`diff_drive.py`): the legs on each side are driven like the wheels of a
+  differential drive to follow a circle, with a speed limit of 13 rad/s, 20 Hz loop.
+* **Autonomous navigator** (`autonomous_controller.py`): builds a square, circle, polygon or figure-eight waypoint
+  trajectory, reads the odometry and publishes one of four discrete commands (`w`, `a`, `s`, `d`) on
+  `/hexapod_0/command`; it knows nothing about the gait that executes them.
+* **Logging** (`hexapod_logger.py`): CSV of angle, speed and current of every motor plus `x, y, φ` and their increments,
+  at a fixed rate; the logs of the gait experiments are in `hexapod_movement/logs/`.
+* **RL analysis** (`rl/analyze/`): 498 logged episodes with their metrics, plots of training curves and trajectories, and
+  a trajectory animation.
 
-> **Project scope:** `rl/analyze/` contains analysis utilities and archived episode data. A complete reinforcement-learning training environment and trainer are **not included** in this repository snapshot.
+### ROS 2 interface
+
+| topic | type | direction | what |
+|---|---|---|---|
+| `/hexapod_0/set_position_targets` | `std_msgs/Float64MultiArray` | controller → robot | target for the six motors |
+| `/hexapod_0/joint_states` | `sensor_msgs/JointState` | robot → controller | joint positions and velocities |
+| `/hexapod_0/dataset` | `std_msgs/Float64MultiArray` | robot → controller | motor telemetry: angle, speed, current |
+| `/hexapod_0/odom` | `nav_msgs/Odometry` | robot → controller | pose for navigation and logging |
+| `/hexapod_0/command` | `std_msgs/String` | navigator → gait | `w`, `a`, `s`, `d` |
+
+### What the logged RL episodes show
+
+Each episode JSON holds the reward, the success flag, the stopping reason, RMS distance to the goal and to the path,
+heading error, roll and pitch, path length and how many waypoints were reached. Over the 498 episodes in the repository,
+235 reached the end of their trajectory and 263 timed out; the mean completion ratio is 0.80.
+
+| path | episodes | completed | | path | episodes | completed |
+|---|---|---|---|---|---|---|
+| line | 25 | 25 | | straight | 33 | 32 |
+| curve | 31 | 31 | | ellipse | 18 | 18 |
+| square | 25 | 24 | | figure8 | 19 | 17 |
+| circle | 31 | 27 | | clover | 77 | 30 |
+| spiral | 81 | 29 | | zigzag | 74 | 2 |
+| lissajous | 84 | 0 | | | | |
+
+> The episodes come from several training runs of a policy whose training environment is not part of this repository, so
+> read the table as a picture of which paths were hard, not as a benchmark.
 
 ## Requirements
 
-- Linux with a compatible ROS 2 distribution and Python environment supporting `rclpy`.
-- ROS 2 message packages: `std_msgs`, `sensor_msgs`, `nav_msgs`.
-- A **separate running hexapod simulation or hardware bridge** publishing joint states and odometry and accepting six joint targets.
-- For data analysis: `numpy`, `pandas`, `matplotlib`, `plotly`.
+* Ubuntu 24.04, ROS 2 Jazzy (`rclpy`, `std_msgs`, `sensor_msgs`, `nav_msgs`);
+* a running simulation of the hexapod under the namespace `hexapod_0` (Gazebo model plus the ROS bridge) that publishes
+  the topics above and accepts `set_position_targets`;
+* for the analysis scripts: Python ≥ 3.10 with pandas and matplotlib.
 
-This is a collection of Python nodes rather than an installable ROS 2 package: there is no `package.xml`, launch file or model/world configuration in this archive.
-
-## Quick start: a gait controller
-
-After sourcing ROS 2 and launching your existing hexapod simulator/bridge, run one of the controllers:
+## Quick start
 
 ```bash
-source /opt/ros/jazzy/setup.bash  # change if you use another ROS 2 distro
-cd hexapod_movement
-python3 tripod.py
+git clone https://github.com/<your-account>/Hexapod_3_High_Level.git
+cd Hexapod_3_High_Level/hexapod_movement
+source /opt/ros/jazzy/setup.bash
+
+python3 0_keyboard_tripod.py          # walk with W/A/S/D, stop with Space or X
+python3 0_keyboard_waves.py           # the same with another gait
+python3 cpg.py                        # follow a circle with coupled oscillators
+python3 phase_oscillator.py           # follow the path chosen by `self.mode` in the file
+python3 autonomous_controller.py      # waypoint navigation (square by default)
 ```
 
-In another terminal, send a **discrete command** (for the external-command controllers):
+The scripts are run from `hexapod_movement/` because they import `hexapod_logger`. The gain, step and threshold
+constants are at the top of each controller.
+
+### Analysing episodes
 
 ```bash
-ros2 topic pub --once /hexapod_0/command std_msgs/msg/String '{data: "w"}'
-```
-
-The command vocabulary is `w` / `a` / `s` / `d` (forward, left, backward, right in the controller convention) and empty string or `stop` to stop. Some variants implement different stepping behavior; inspect the chosen controller before running real actuators.
-
-Alternatively, experiment with an interactive script from the same directory:
-
-```bash
-python3 0_keyboard_tripod.py
-```
-
-Keyboard variants use Unix terminal input (`termios`, `tty`), so run them in a normal Linux terminal.
-
-## Autonomous waypoint navigation
-
-For a controller such as `tripod.py` already listening on `/hexapod_0/command`, start the navigator from the repository root:
-
-```bash
-python3 hexapod_movement/autonomous_controller.py \
-  --ros-args -p trajectory_kind:=square -p square_side:=12.0
-```
-
-The navigator subscribes to `/hexapod_0/odom` and publishes discrete `std_msgs/String` commands to `/hexapod_0/command`. Parameters include `trajectory_kind`, `radius`, `polygon_sides`, `loop`, `waypoint_tolerance` and `control_rate_hz`. This **assumes a compatible simulator and coordinate frame**; the repository does not supply the simulator itself.
-
-## Control and data flow
-
-```text
-Keyboard / waypoint navigator
-           │ std_msgs/String: /hexapod_0/command
-           ▼
-      Gait controller  <── /hexapod_0/joint_states
-           │
-           └───────────> /hexapod_0/set_position_targets
-
-      Odometry / dataset topics ──> HexapodLogger ──> CSV files
+cd rl/analyze
+python3 plot_successful_trajectories.py --help
+python3 plot_partial_trajectories.py --help
+python3 plot_training_metrics.py <training_metrics.csv>      # training curves, split into sessions
+python3 traj_anim.py --help                                  # trajectory animation
 ```
 
 ## Repository layout
 
-```text
+```
 hexapod_movement/
-  tripod.py, waves.py, ...          external-command gait controllers
-  0_keyboard_*.py                   interactive keyboard variants
-  autonomous_controller.py          waypoint generator and navigator
-  hexapod_logger.py                 CSV logging helper
-  logs/, log_int_0.1/               archived movement logs
-  well it works/, not working/      historical experiments; not canonical entry points
+  0_keyboard_<gait>.py     keyboard controllers with logging: tripod, diagonals, four_two, waves, quadro (+ tripod_z_fall)
+  <gait>.py, new_<gait>.py other versions of the same gaits
+  cpg.py                   coupled phase oscillators, circle following
+  phase_oscillator.py      gait generator with selectable reference paths
+  diff_drive.py            differential-drive style circle following
+  autonomous_controller.py waypoint navigator → w/a/s/d commands
+  hexapod_logger.py        CSV logging of motors and pose
+  logs/                    recorded runs per gait
 rl/analyze/
-  plot_training_metrics*.py         learning-metric plots from recorded CSV
-  plot_*trajectories.py             trajectory plots
-  episode/trajectory_animation_html.py  standalone HTML trajectory animation
-  output_plot/, output_plots/       saved trajectory illustrations
-  episode/, ...                     archived episode data and analysis outputs
+  episodes/                498 episode summaries (JSON) and one step log (CSV)
+  output_plots/            trajectory plots of selected episodes
+  plot_*.py, traj_anim.py  metrics, trajectories, animation
 ```
 
-## Example: analysis of recorded data
+## Part of the Hexapod stack
 
-The analysis utilities accept file paths and do not require the original simulator once the logs are available. For example:
-
-```bash
-python3 rl/analyze/episode/trajectory_animation_html.py \
-  --input PATH_TO_EPISODE_CSV --output trajectory.html
-```
-
-The input must contain the columns expected by the script; use an appropriate per-step episode CSV from the archived data. The training metrics script accepts a `training_metrics.csv` file as a positional argument; its expected schema is defined in `plot_training_metrics.py`.
-
-## Status and limitations
-
-- The repository records multiple **experimental** gait/controller variants, including explicitly unsuccessful ones. Not every script is a maintained stable interface.
-- ROS 2 launch/configuration and a complete Gazebo hexapod world are not bundled here; connect your own simulator or physical bridge.
-- Recorded episode plots represent specific runs and do not establish comparative controller performance without a common evaluation protocol.
-- No separate top-level project licence was included in the uploaded archive.
+| level | repository | runs on |
+|---|---|---|
+| 1 — motors | [Hexapod_1_Low_Level](https://github.com/<your-account>/Hexapod_1_Low_Level) | STM32F103C8T6 × 3 |
+| 2 — coordination | [Hexapod_2_Middle_Level](https://github.com/<your-account>/Hexapod_2_Middle_Level) | STM32F446RE |
+| 3 — gaits and navigation | **Hexapod_3_High_Level** | ROS 2 / Gazebo |
